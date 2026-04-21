@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans:
+    "SF Pro Display", "SF Pro", -apple-system, BlinkMacSystemFont, "Helvetica Neue",
+    system-ui, sans-serif;
+  --font-mono:
+    "SF Mono", "SFMono-Regular", ui-monospace, Menlo, monospace;
+}
+
+:root {
+  color-scheme: dark;
+  --color-bg: #000000;
+  --color-notation: rgba(255, 255, 255, 0.85);
+  --color-icon: rgba(255, 255, 255, 0.5);
+  --color-icon-hover: rgba(255, 255, 255, 0.8);
+  --color-key-white: #e8e8e8;
+  --color-key-white-end: #d8d8d8;
+  --color-key-white-hover: #f0f0f0;
+  --color-key-white-active: #c8c8c8;
+  --color-key-white-border: rgba(255, 255, 255, 0.06);
+  --color-key-black: #111111;
+  --color-key-black-end: #222222;
+  --color-key-black-hover: #282828;
+  --color-key-black-active: #333333;
+  --color-key-black-border: rgba(255, 255, 255, 0.05);
+  --color-piano-frame: rgba(255, 255, 255, 0.10);
+  --color-piano-shadow: rgba(0, 0, 0, 0.6);
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --color-bg: #ffffff;
+  --color-notation: rgba(0, 0, 0, 0.82);
+  --color-icon: rgba(0, 0, 0, 0.35);
+  --color-icon-hover: rgba(0, 0, 0, 0.65);
+  --color-key-white: #ffffff;
+  --color-key-white-end: #eeeeee;
+  --color-key-white-hover: #f5f5f5;
+  --color-key-white-active: #dcdcdc;
+  --color-key-white-border: rgba(0, 0, 0, 0.12);
+  --color-key-black: #1a1a1a;
+  --color-key-black-end: #2a2a2a;
+  --color-key-black-hover: #333333;
+  --color-key-black-active: #444444;
+  --color-key-black-border: rgba(0, 0, 0, 0.25);
+  --color-piano-frame: rgba(0, 0, 0, 0.18);
+  --color-piano-shadow: rgba(0, 0, 0, 0.15);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-notation);
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+}
+
+.vexflow-container svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.vexflow-container svg path,
+.vexflow-container svg rect,
+.vexflow-container svg line,
+.vexflow-container svg polyline,
+.vexflow-container svg polygon,
+.vexflow-container svg ellipse,
+.vexflow-container svg circle {
+  stroke: var(--color-notation);
+  fill: var(--color-notation);
+}
+
+.vexflow-container svg text {
+  fill: var(--color-notation);
+}
+
+.piano-keyboard {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 150px;
+  user-select: none;
+  touch-action: none;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--color-piano-frame);
+  box-shadow:
+    0 2px 8px var(--color-piano-shadow),
+    0 8px 24px var(--color-piano-shadow);
+}
+
+.piano-key {
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.06s ease, box-shadow 0.06s ease;
+}
+
+.piano-key:focus-visible {
+  outline: 2px solid var(--color-notation);
+  outline-offset: -2px;
+  z-index: 3;
+}
+
+.piano-key--white {
+  flex: 1;
+  height: 100%;
+  background: linear-gradient(to bottom, var(--color-key-white) 50%, var(--color-key-white-end));
+  border-right: 1px solid var(--color-key-white-border);
+  z-index: 0;
+  box-shadow: inset 0 -4px 6px -2px rgba(0, 0, 0, 0.08);
+}
+
+.piano-key--white:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.piano-key--white:last-of-type {
+  border-right: none;
+  border-radius: 0 8px 8px 0;
+}
+
+.piano-key--white:hover {
+  background: linear-gradient(to bottom, var(--color-key-white-hover) 50%, var(--color-key-white-end));
+}
+
+.piano-key--white.piano-key--active {
+  background: var(--color-key-white-active);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.piano-key--black {
+  position: absolute;
+  top: 0;
+  width: 5.8%;
+  height: 60%;
+  background: linear-gradient(to bottom, var(--color-key-black) 60%, var(--color-key-black-end));
+  border-radius: 0 0 5px 5px;
+  z-index: 2;
+  transform: translateX(-50%);
+  box-shadow:
+    0 3px 4px rgba(0, 0, 0, 0.4),
+    inset 0 -1px 2px rgba(255, 255, 255, 0.05);
+}
+
+.piano-key--black:hover {
+  background: linear-gradient(to bottom, var(--color-key-black-hover) 60%, var(--color-key-black-end));
+}
+
+.piano-key--black.piano-key--active {
+  background: var(--color-key-black-active);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    inset 0 1px 3px rgba(0, 0, 0, 0.3);
+  height: 59%;
+}

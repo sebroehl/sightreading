@@ -1,0 +1,55 @@
+import type { Clef, Note, NoteAccidental, NoteLetter, NotePitch } from './types'
+
+const LETTERS: NoteLetter[] = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
+
+function buildRange(start: NotePitch, length: number): Note[] {
+  const startIndex = LETTERS.indexOf(start.letter) + start.octave * LETTERS.length
+
+  return Array.from({ length }, (_, step) => {
+    const absoluteIndex = startIndex + step
+    const octave = Math.floor(absoluteIndex / LETTERS.length)
+    const letter = LETTERS[absoluteIndex % LETTERS.length]
+
+    return {
+      letter,
+      octave,
+      accidental: null,
+      duration: 'q',
+    }
+  })
+}
+
+export const NOTE_RANGES: Record<Clef, Note[]> = {
+  treble: buildRange({ letter: 'E', octave: 4 }, 10),
+  bass: buildRange({ letter: 'G', octave: 2 }, 10),
+}
+
+function accidentalToText(accidental: NoteAccidental | undefined): string {
+  if (!accidental) {
+    return ''
+  }
+
+  return accidental
+}
+
+export function noteToVexFlowKey(note: NotePitch): string {
+  const accidental = accidentalToText(note.accidental)
+
+  return `${note.letter.toLowerCase()}${accidental}/${note.octave}`
+}
+
+export function getNoteLabel(note: NotePitch): string {
+  const accidental = accidentalToText(note.accidental)
+
+  return `${note.letter}${accidental}${note.octave}`
+}
+
+export function randomNote(
+  clef: Clef,
+  range: Note[] = NOTE_RANGES[clef],
+  rng: () => number = Math.random,
+): Note {
+  const index = Math.min(Math.floor(rng() * range.length), range.length - 1)
+
+  return range[index]
+}
