@@ -44,6 +44,16 @@ export function getNoteLabel(note: NotePitch): string {
   return `${note.letter}${accidental}${note.octave}`
 }
 
+export function notePitchEquals(a: NotePitch, b: NotePitch): boolean {
+  const norm = (acc: NoteAccidental | undefined): string =>
+    !acc || acc === 'n' ? '' : acc
+  return (
+    a.letter === b.letter &&
+    a.octave === b.octave &&
+    norm(a.accidental) === norm(b.accidental)
+  )
+}
+
 export function randomNote(
   clef: Clef,
   range: Note[] = NOTE_RANGES[clef],
@@ -52,4 +62,8 @@ export function randomNote(
   const index = Math.min(Math.floor(rng() * range.length), range.length - 1)
 
   return range[index]
+}
+
+export function generateNoteQueue(clef: Clef, count: number): Note[] {
+  return Array.from({ length: count }, () => randomNote(clef))
 }

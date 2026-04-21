@@ -1,25 +1,59 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import type { Theme } from '../hooks/useVexFlow'
-import { randomNote } from '../lib/notation'
-import type { Clef, Note } from '../lib/types'
+import { CORRECT_COLOR, type Theme } from '../hooks/useVexFlow'
+import { generateNoteQueue, notePitchEquals, randomNote } from '../lib/notation'
+import type { Clef, NotePitch } from '../lib/types'
 import { PianoKeyboard } from './PianoKeyboard'
 import { Staff } from './Staff'
 import { ThemeToggle } from './ThemeToggle'
 
-function nextNote(clef: Clef): Note {
-  return randomNote(clef)
-}
+const NOTE_COUNT = 8
 
 export function NoteDisplay() {
   const [clef] = useState<Clef>('treble')
-  const [note] = useState<Note>(() => nextNote('treble'))
+  const [notes, setNotes] = useState(() => generateNoteQueue('treble', NOTE_COUNT))
   const [theme, setTheme] = useState<Theme>('dark')
   const [showLabels, setShowLabels] = useState(false)
+  const [noteColor, setNoteColor] = useState<string | undefined>()
+  const [ghostNote, setGhostNote] = useState<NotePitch | null>(null)
+  const [sliding, setSliding] = useState(false)
+
+  const activeNote = notes[0]
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
+
+  const notation = useMemo(() => ({ notes, clef }), [notes, clef])
+
+  const handleNoteClick = useCallback(
+    (played: NotePitch) => {
+      if (sliding) return
+
+      if (notePitchEquals(played, activeNote)) {
+        setNoteColor(CORRECT_COLOR)
+        setGhostNote(null)
+        setSliding(true)
+      } else {
+        setGhostNote(played)
+      }
+    },
+    [activeNote, sliding],
+  )
+
+  const handleNoteRelease = useCallback(() => {
+    if (!sliding) {
+      setNoteColor(undefined)
+      setGhostNote(null)
+    }
+  }, [sliding])
+
+  const handleSlideComplete = useCallback(() => {
+    setSliding(false)
+    setNoteColor(undefined)
+    setGhostNote(null)
+    setNotes((prev) => [...prev.slice(1), randomNote(clef)])
+  }, [clef])
 
   const toggleTheme = useCallback(() => {
     setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
@@ -58,10 +92,17 @@ export function NoteDisplay() {
           </button>
         </div>
         <div className="w-full">
-          <Staff notation={{ notes: [note], clef }} theme={theme} />
+          <Staff
+            notation={notation}
+            theme={theme}
+            noteColor={noteColor}
+            ghostNote={ghostNote}
+            sliding={sliding}
+            onSlideComplete={handleSlideComplete}
+          />
         </div>
         <div className="w-full">
-          <PianoKeyboard showLabels={showLabels} />
+          <PianoKeyboard showLabels={showLabels} onNoteClick={handleNoteClick} onNoteRelease={handleNoteRelease} />
         </div>
       </div>
     </div>

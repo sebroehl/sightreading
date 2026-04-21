@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 import { useAudio } from '../hooks/useAudio'
 import type { NoteAccidental, NoteLetter, NotePitch } from '../lib/types'
@@ -43,6 +43,7 @@ interface PianoKeyboardProps {
   octaveCount?: number
   showLabels?: boolean
   onNoteClick?: (note: NotePitch) => void
+  onNoteRelease?: () => void
 }
 
 export function PianoKeyboard({
@@ -50,9 +51,11 @@ export function PianoKeyboard({
   octaveCount = 2,
   showLabels = false,
   onNoteClick,
+  onNoteRelease,
 }: PianoKeyboardProps) {
   const { playNote } = useAudio()
   const [activeKey, setActiveKey] = useState<string | null>(null)
+  const isPressed = useRef(false)
 
   const keys = buildKeys(startOctave, octaveCount)
   const whiteKeys = keys.filter((k) => !k.isBlack)
@@ -62,6 +65,7 @@ export function PianoKeyboard({
 
   const handlePress = useCallback(
     (key: PianoKey) => {
+      isPressed.current = true
       setActiveKey(key.label)
       playNote(key.note)
       onNoteClick?.(key.note)
@@ -70,8 +74,11 @@ export function PianoKeyboard({
   )
 
   const handleRelease = useCallback(() => {
+    if (!isPressed.current) return
+    isPressed.current = false
     setActiveKey(null)
-  }, [])
+    onNoteRelease?.()
+  }, [onNoteRelease])
 
   const getBlackKeyPosition = (key: PianoKey): number => {
     const oct = key.note.octave
