@@ -41,12 +41,14 @@ function buildKeys(startOctave: number, octaveCount: number): PianoKey[] {
 interface PianoKeyboardProps {
   startOctave?: number
   octaveCount?: number
+  showLabels?: boolean
   onNoteClick?: (note: NotePitch) => void
 }
 
 export function PianoKeyboard({
   startOctave = 4,
   octaveCount = 2,
+  showLabels = false,
   onNoteClick,
 }: PianoKeyboardProps) {
   const { playNote } = useAudio()
@@ -96,7 +98,13 @@ export function PianoKeyboard({
           onPointerDown={() => handlePress(key)}
           onPointerUp={handleRelease}
           onPointerLeave={handleRelease}
-        />
+        >
+          {showLabels && (
+            <span className="piano-key__label piano-key__label--white">
+              {key.note.letter}{key.note.accidental === '#' && '#'}<span className="piano-key__octave">{key.note.octave}</span>
+            </span>
+          )}
+        </button>
       ))}
 
       {blackKeys.map((key) => (
@@ -108,7 +116,13 @@ export function PianoKeyboard({
           onPointerDown={() => handlePress(key)}
           onPointerUp={handleRelease}
           onPointerLeave={handleRelease}
-        />
+        >
+          {showLabels && (
+            <span className="piano-key__label piano-key__label--black">
+              {key.note.letter}{key.note.accidental === '#' && '#'}<span className="piano-key__octave">{key.note.octave}</span>
+            </span>
+          )}
+        </button>
       ))}
     </div>
   )
