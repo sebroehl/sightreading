@@ -12,6 +12,8 @@ const NOTE_COUNT = 8
 
 const ICON_SIZE = 20
 const PAD = 0.3
+const TOOLBAR_BUTTON_CLASS =
+  'relative flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-icon)] shadow-sm transition-all duration-200 hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-icon-hover)] cursor-pointer overflow-hidden'
 
 interface GlyphDef {
   char: string
@@ -75,11 +77,36 @@ function MicrophoneIcon({ active }: { active: boolean }) {
   )
 }
 
+function DiagnosticsIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      width={ICON_SIZE}
+      height={ICON_SIZE}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="4" y="5" width="16" height="11" rx="2" />
+      <path d="M8 20h8" />
+      <path d="M10 16v4" />
+      <path d="M14 16v4" />
+      <path d="M8 9h.01" />
+      <path d="M12 9h4" opacity={active ? 1 : 0.7} />
+      <path d="M12 12h2" opacity={active ? 1 : 0.5} />
+    </svg>
+  )
+}
+
 export function NoteDisplay() {
   const [clef, setClef] = useState<Clef>('treble')
   const [notes, setNotes] = useState(() => generateNoteQueue('treble', NOTE_COUNT))
   const [theme, setTheme] = useState<Theme>('dark')
   const [showLabels, setShowLabels] = useState(false)
+  const [showDiagnostics, setShowDiagnostics] = useState(true)
   const [noteColor, setNoteColor] = useState<string | undefined>()
   const [ghostNote, setGhostNote] = useState<NotePitch | null>(null)
   const [sliding, setSliding] = useState(false)
@@ -142,6 +169,10 @@ export function NoteDisplay() {
     setShowLabels((s) => !s)
   }, [])
 
+  const toggleDiagnostics = useCallback(() => {
+    setShowDiagnostics((current) => !current)
+  }, [])
+
   const toggleMicrophone = useCallback(() => {
     if (isListening) {
       stopListening()
@@ -173,13 +204,13 @@ export function NoteDisplay() {
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-[var(--color-bg)] transition-colors duration-500">
       <div className="flex w-full max-w-[560px] flex-col items-center gap-6 px-8">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
           <button
             type="button"
             onClick={toggleClef}
             aria-label={`Switch to ${clef === 'treble' ? 'bass' : 'treble'} clef`}
-            className="flex h-10 w-10 items-center justify-center rounded-full transition-colors duration-300 text-[var(--color-icon)] hover:text-[var(--color-icon-hover)] cursor-pointer overflow-hidden"
+            className={`${TOOLBAR_BUTTON_CLASS} ${clef === 'bass' ? 'bg-[var(--color-surface-strong)] text-[var(--color-icon-hover)]' : ''}`}
           >
             <BravuraIcon glyph={clef === 'treble' ? GLYPHS.treble : GLYPHS.bass} />
           </button>
@@ -187,7 +218,7 @@ export function NoteDisplay() {
             type="button"
             onClick={toggleLabels}
             aria-label={showLabels ? 'Hide note names' : 'Show note names'}
-            className="flex h-10 w-10 items-center justify-center rounded-full transition-colors duration-300 text-[var(--color-icon)] hover:text-[var(--color-icon-hover)] cursor-pointer overflow-hidden"
+            className={`${TOOLBAR_BUTTON_CLASS} ${showLabels ? 'bg-[var(--color-surface-strong)] text-[var(--color-icon-hover)]' : ''}`}
           >
             <BravuraIcon glyph={GLYPHS.quarter} opacity={showLabels ? 1 : 0.5} />
           </button>
@@ -197,12 +228,23 @@ export function NoteDisplay() {
               onClick={toggleMicrophone}
               aria-label={isListening ? 'Stop microphone input' : 'Start microphone input'}
               aria-pressed={isListening}
-              className="relative flex h-10 w-10 items-center justify-center rounded-full transition-colors duration-300 text-[var(--color-icon)] hover:text-[var(--color-icon-hover)] cursor-pointer overflow-hidden"
+              className={`${TOOLBAR_BUTTON_CLASS} ${isListening ? 'bg-[var(--color-surface-strong)] text-[var(--color-icon-hover)]' : ''}`}
             >
               <MicrophoneIcon active={isListening} />
               {isListening && (
                 <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[var(--color-icon-hover)]" />
               )}
+            </button>
+          )}
+          {isMicrophoneSupported && (
+            <button
+              type="button"
+              onClick={toggleDiagnostics}
+              aria-label={showDiagnostics ? 'Hide diagnostics' : 'Show diagnostics'}
+              aria-pressed={showDiagnostics}
+              className={`${TOOLBAR_BUTTON_CLASS} ${showDiagnostics ? 'bg-[var(--color-surface-strong)] text-[var(--color-icon-hover)]' : ''}`}
+            >
+              <DiagnosticsIcon active={showDiagnostics} />
             </button>
           )}
         </div>
@@ -218,32 +260,84 @@ export function NoteDisplay() {
                 : 'Listening...'}
           </div>
         )}
-        {isMicrophoneSupported && (
-          <div className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-xs text-[var(--color-text-muted)]">
-            <h2 className="text-sm font-semibold text-[var(--color-text)]">Microphone diagnostics</h2>
-            <div className="mt-3 grid grid-cols-1 gap-1 sm:grid-cols-2">
-              <div>Secure: {debug.environment.isSecureContext ? 'yes' : 'no'}</div>
-              <div>API available: {debug.environment.hasGetUserMedia ? 'yes' : 'no'}</div>
-              <div>AudioContext: {debug.audioContext.state}</div>
-              <div>Resume result: {debug.audioContext.resumeResult ?? 'pending'}</div>
-              <div>Stream: {debug.stream.stage}</div>
-              <div>Track: {debug.stream.trackReadyState ?? 'n/a'}</div>
-              <div>Track muted: {debug.stream.trackMuted === null ? 'n/a' : debug.stream.trackMuted ? 'yes' : 'no'}</div>
-              <div>Sample rate: {debug.audioContext.sampleRate ?? 'n/a'}</div>
-              <div>RMS: {debug.metrics.rms.toFixed(3)}</div>
-              <div>Frequency: {debug.metrics.frequency.toFixed(2)} Hz</div>
-              <div>Clarity: {debug.metrics.clarity.toFixed(2)}</div>
-              <div>Frame count: {debug.metrics.frameCount}</div>
-              <div>Has pitch: {debug.metrics.hasPitch ? 'yes' : 'no'}</div>
-              <div>Rejected by: {debug.metrics.rejectedBy ?? 'n/a'}</div>
-              <div>Target note: {activeNoteLabel}</div>
-              <div>Detected note: {detectedNoteLabel ?? 'n/a'}</div>
-              <div>Match result: {matchResult}</div>
-              <div>Error: {microphoneError ?? 'none'}</div>
+        {isMicrophoneSupported && showDiagnostics && (
+          <section
+            className="fixed z-30 w-[min(360px,calc(100vw-2.5rem))] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[10px] text-[var(--color-text-muted)] shadow-lg backdrop-blur-sm"
+            style={{
+              top: 'max(1rem, calc(env(safe-area-inset-top) + 1rem))',
+              right: 'max(1rem, calc(env(safe-area-inset-right) + 1rem))',
+              padding: '28px',
+            }}
+          >
+            <div style={{ paddingBottom: '8px' }}>
+              <h2 className="text-xs font-semibold text-[var(--color-text)]">
+                Microphone diagnostics
+              </h2>
+              <p className="mt-1 text-[10px] leading-relaxed text-[var(--color-text-muted)]">
+                Use this while testing on iPad to see where the mic pipeline is failing.
+              </p>
             </div>
-            <div className="mt-3">
-              <div className="font-medium text-[var(--color-text)]">Event log</div>
-              <ul className="mt-1 space-y-1">
+
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-xl bg-[var(--color-bg)] p-5">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text)]">
+                  Environment
+                </div>
+                <div className="space-y-1">
+                  <div>Secure: {debug.environment.isSecureContext ? 'yes' : 'no'}</div>
+                  <div>API available: {debug.environment.hasGetUserMedia ? 'yes' : 'no'}</div>
+                  <div>AudioContext: {debug.audioContext.state}</div>
+                  <div>Resume result: {debug.audioContext.resumeResult ?? 'pending'}</div>
+                  <div>Sample rate: {debug.audioContext.sampleRate ?? 'n/a'}</div>
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-[var(--color-bg)] p-5">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text)]">
+                  Stream
+                </div>
+                <div className="space-y-1">
+                  <div>Stream: {debug.stream.stage}</div>
+                  <div>Track: {debug.stream.trackReadyState ?? 'n/a'}</div>
+                  <div>
+                    Track muted:{' '}
+                    {debug.stream.trackMuted === null ? 'n/a' : debug.stream.trackMuted ? 'yes' : 'no'}
+                  </div>
+                  <div>Error: {microphoneError ?? 'none'}</div>
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-[var(--color-bg)] p-5">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text)]">
+                  Signal
+                </div>
+                <div className="space-y-1">
+                  <div>RMS: {debug.metrics.rms.toFixed(3)}</div>
+                  <div>Frequency: {debug.metrics.frequency.toFixed(2)} Hz</div>
+                  <div>Clarity: {debug.metrics.clarity.toFixed(2)}</div>
+                  <div>Frame count: {debug.metrics.frameCount}</div>
+                  <div>Has pitch: {debug.metrics.hasPitch ? 'yes' : 'no'}</div>
+                  <div>Rejected by: {debug.metrics.rejectedBy ?? 'n/a'}</div>
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-[var(--color-bg)] p-5">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text)]">
+                  Note matching
+                </div>
+                <div className="space-y-1">
+                  <div>Target note: {activeNoteLabel}</div>
+                  <div>Detected note: {detectedNoteLabel ?? 'n/a'}</div>
+                  <div>Match result: {matchResult}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-xl bg-[var(--color-bg)] p-5">
+              <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text)]">
+                Event log
+              </div>
+              <ul className="space-y-1">
                 {debug.events.length === 0 ? (
                   <li>waiting for microphone activity</li>
                 ) : (
@@ -251,7 +345,7 @@ export function NoteDisplay() {
                 )}
               </ul>
             </div>
-          </div>
+          </section>
         )}
         <div className="w-full">
           <Staff

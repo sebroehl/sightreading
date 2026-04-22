@@ -13,7 +13,7 @@ export function ThemeToggle({ theme, onToggle }: ThemeToggleProps) {
       type="button"
       onClick={onToggle}
       aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
-      className="flex h-10 w-10 items-center justify-center rounded-full transition-colors duration-300 text-[var(--color-icon)] hover:text-[var(--color-icon-hover)] cursor-pointer"
+      className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-icon)] shadow-sm transition-all duration-200 hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-icon-hover)] cursor-pointer"
     >
       {isDark ? (
         <svg

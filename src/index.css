@@ -11,6 +11,11 @@
 :root {
   color-scheme: dark;
   --color-bg: #000000;
+  --color-surface: rgba(255, 255, 255, 0.04);
+  --color-surface-strong: rgba(255, 255, 255, 0.08);
+  --color-border: rgba(255, 255, 255, 0.12);
+  --color-text: rgba(255, 255, 255, 0.92);
+  --color-text-muted: rgba(255, 255, 255, 0.62);
   --color-notation: rgba(255, 255, 255, 0.85);
   --color-icon: rgba(255, 255, 255, 0.5);
   --color-icon-hover: rgba(255, 255, 255, 0.8);
@@ -39,6 +44,11 @@
 [data-theme="light"] {
   color-scheme: light;
   --color-bg: #ffffff;
+  --color-surface: rgba(0, 0, 0, 0.03);
+  --color-surface-strong: rgba(0, 0, 0, 0.06);
+  --color-border: rgba(0, 0, 0, 0.1);
+  --color-text: rgba(0, 0, 0, 0.88);
+  --color-text-muted: rgba(0, 0, 0, 0.56);
   --color-notation: rgba(0, 0, 0, 0.82);
   --color-icon: rgba(0, 0, 0, 0.35);
   --color-icon-hover: rgba(0, 0, 0, 0.65);

@@ -243,4 +243,20 @@ describe('NoteDisplay', () => {
     expect(screen.getByText(/Match result: wrong note/i)).toBeInTheDocument()
     expect(screen.getByText('pitch rejected (clarity)')).toBeInTheDocument()
   })
+
+  it('can hide and show the diagnostics panel', () => {
+    render(<NoteDisplay />)
+
+    expect(screen.getByText('Microphone diagnostics')).toBeInTheDocument()
+    expect(screen.getByText(/Secure: yes/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide diagnostics' }))
+
+    expect(screen.getByRole('button', { name: 'Show diagnostics' })).toBeInTheDocument()
+    expect(screen.queryByText(/Secure: yes/i)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show diagnostics' }))
+
+    expect(screen.getByText(/Secure: yes/i)).toBeInTheDocument()
+  })
 })
