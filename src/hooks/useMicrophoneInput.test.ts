@@ -32,6 +32,10 @@ vi.mock('pitchy', () => ({
 }))
 
 class MediaStreamTrackMock {
+  enabled = true
+  muted = false
+  readyState: MediaStreamTrackState = 'live'
+  label = 'Built-in Microphone'
   stop = vi.fn()
 }
 
@@ -73,6 +77,7 @@ describe('useMicrophoneInput', () => {
     detector.findPitch.mockClear()
     detectorState.nextResults = []
     ensureAudioResumed.mockReset()
+    ensureAudioResumed.mockResolvedValue('running')
     animationQueue = []
 
     stream = new MediaStreamMock()
@@ -80,9 +85,12 @@ describe('useMicrophoneInput', () => {
     source = new MediaStreamSourceNodeMock()
 
     getAudioContext.mockReturnValue({
+      state: 'running',
       sampleRate: 48_000,
+      addEventListener: vi.fn(),
       createAnalyser: () => analyser,
       createMediaStreamSource: () => source,
+      removeEventListener: vi.fn(),
     })
 
     vi.stubGlobal('requestAnimationFrame', ((cb: FrameRequestCallback) => {
@@ -121,6 +129,11 @@ describe('useMicrophoneInput', () => {
 
     expect(result.current.isListening).toBe(true)
     expect(ensureAudioResumed).toHaveBeenCalled()
+    expect(result.current.debug.environment.hasGetUserMedia).toBe(true)
+    expect(result.current.debug.stream.stage).toBe('listening')
+    expect(result.current.debug.audioContext.sampleRate).toBe(48_000)
+    expect(result.current.debug.audioContext.state).toBe('running')
+    expect(result.current.debug.stream.trackReadyState).toBe('live')
 
     await act(async () => {
       animationQueue.shift()?.(0)
@@ -140,6 +153,12 @@ describe('useMicrophoneInput', () => {
       octave: 4,
       accidental: null,
     })
+    expect(result.current.debug.metrics.frequency).toBe(440)
+    expect(result.current.debug.metrics.clarity).toBe(0.98)
+    expect(result.current.debug.metrics.hasPitch).toBe(true)
+    expect(result.current.debug.metrics.frameCount).toBe(2)
+    expect(result.current.debug.detection.lastDetectedNote).toBe('A4')
+    expect(result.current.debug.events.some((event) => event.includes('stream acquired'))).toBe(true)
   })
 
   it('releases the active note on silence and stops the stream', async () => {
@@ -181,5 +200,27 @@ describe('useMicrophoneInput', () => {
     expect(stream.track.stop).toHaveBeenCalled()
     expect(result.current.isListening).toBe(false)
     expect(result.current.currentNote).toBeNull()
+  })
+
+  it('surfaces raw microphone errors in diagnostics', async () => {
+    Object.defineProperty(globalThis.navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockRejectedValue(new DOMException('Permission denied', 'NotAllowedError')),
+      },
+    })
+
+    const { result } = renderHook(() => useMicrophoneInput({}))
+
+    await act(async () => {
+      await result.current.startListening()
+    })
+
+    expect(result.current.isListening).toBe(false)
+    expect(result.current.error).toContain('NotAllowedError')
+    expect(result.current.debug.stream.stage).toBe('error')
+    expect(result.current.debug.stream.errorName).toBe('NotAllowedError')
+    expect(result.current.debug.stream.errorMessage).toBe('Permission denied')
+    expect(result.current.debug.events.some((event) => event.includes('getUserMedia failed'))).toBe(true)
   })
 })

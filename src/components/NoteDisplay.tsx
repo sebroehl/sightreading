@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useMicrophoneInput } from '../hooks/useMicrophoneInput'
 import { CORRECT_COLOR, type Theme } from '../hooks/useVexFlow'
-import { generateNoteQueue, notePitchEquals, randomNote } from '../lib/notation'
+import { generateNoteQueue, getNoteLabel, notePitchEquals, randomNote } from '../lib/notation'
 import type { Clef, NotePitch } from '../lib/types'
 import { PianoKeyboard } from './PianoKeyboard'
 import { Staff } from './Staff'
@@ -116,6 +116,7 @@ export function NoteDisplay() {
 
   const {
     currentNote: detectedNote,
+    debug,
     error: microphoneError,
     isListening,
     isSupported: isMicrophoneSupported,
@@ -160,6 +161,14 @@ export function NoteDisplay() {
       return nextClef
     })
   }, [])
+
+  const activeNoteLabel = getNoteLabel(activeNote)
+  const detectedNoteLabel = detectedNote ? getNoteLabel(detectedNote) : debug.detection.lastDetectedNote
+  const matchResult = !detectedNoteLabel
+    ? 'waiting for note'
+    : notePitchEquals(detectedNote ?? activeNote, activeNote) && detectedNote
+      ? 'correct note'
+      : 'wrong note'
 
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-[var(--color-bg)] transition-colors duration-500">
@@ -207,6 +216,41 @@ export function NoteDisplay() {
               : detectedNote
                 ? `Listening: ${detectedNote.letter}${detectedNote.accidental ?? ''}${detectedNote.octave}`
                 : 'Listening...'}
+          </div>
+        )}
+        {isMicrophoneSupported && (
+          <div className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-xs text-[var(--color-text-muted)]">
+            <h2 className="text-sm font-semibold text-[var(--color-text)]">Microphone diagnostics</h2>
+            <div className="mt-3 grid grid-cols-1 gap-1 sm:grid-cols-2">
+              <div>Secure: {debug.environment.isSecureContext ? 'yes' : 'no'}</div>
+              <div>API available: {debug.environment.hasGetUserMedia ? 'yes' : 'no'}</div>
+              <div>AudioContext: {debug.audioContext.state}</div>
+              <div>Resume result: {debug.audioContext.resumeResult ?? 'pending'}</div>
+              <div>Stream: {debug.stream.stage}</div>
+              <div>Track: {debug.stream.trackReadyState ?? 'n/a'}</div>
+              <div>Track muted: {debug.stream.trackMuted === null ? 'n/a' : debug.stream.trackMuted ? 'yes' : 'no'}</div>
+              <div>Sample rate: {debug.audioContext.sampleRate ?? 'n/a'}</div>
+              <div>RMS: {debug.metrics.rms.toFixed(3)}</div>
+              <div>Frequency: {debug.metrics.frequency.toFixed(2)} Hz</div>
+              <div>Clarity: {debug.metrics.clarity.toFixed(2)}</div>
+              <div>Frame count: {debug.metrics.frameCount}</div>
+              <div>Has pitch: {debug.metrics.hasPitch ? 'yes' : 'no'}</div>
+              <div>Rejected by: {debug.metrics.rejectedBy ?? 'n/a'}</div>
+              <div>Target note: {activeNoteLabel}</div>
+              <div>Detected note: {detectedNoteLabel ?? 'n/a'}</div>
+              <div>Match result: {matchResult}</div>
+              <div>Error: {microphoneError ?? 'none'}</div>
+            </div>
+            <div className="mt-3">
+              <div className="font-medium text-[var(--color-text)]">Event log</div>
+              <ul className="mt-1 space-y-1">
+                {debug.events.length === 0 ? (
+                  <li>waiting for microphone activity</li>
+                ) : (
+                  debug.events.map((event) => <li key={event}>{event}</li>)
+                )}
+              </ul>
+            </div>
           </div>
         )}
         <div className="w-full">

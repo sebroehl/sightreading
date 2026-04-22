@@ -12,6 +12,65 @@ const CLARITY_THRESHOLD = 0.93
 const VOLUME_THRESHOLD = 0.02
 const ONSET_DEBOUNCE_MS = 60
 const RELEASE_DEBOUNCE_MS = 150
+const DEBUG_SAMPLE_INTERVAL_MS = 120
+const MAX_DEBUG_EVENTS = 8
+
+type RejectedBy = 'volume' | 'frequency' | 'clarity' | null
+type StreamStage =
+  | 'idle'
+  | 'resuming'
+  | 'requesting-stream'
+  | 'listening'
+  | 'error'
+  | 'stopped'
+
+interface MicrophoneEnvironmentDebug {
+  hasGetUserMedia: boolean
+  isSecureContext: boolean
+  origin: string
+  protocol: string
+}
+
+interface MicrophoneAudioContextDebug {
+  state: AudioContextState | 'unknown'
+  sampleRate: number | null
+  resumeAttempted: boolean
+  resumeResult: AudioContextState | 'rejected' | null
+}
+
+interface MicrophoneStreamDebug {
+  stage: StreamStage
+  errorName: string | null
+  errorMessage: string | null
+  trackEnabled: boolean | null
+  trackMuted: boolean | null
+  trackReadyState: MediaStreamTrackState | null
+}
+
+interface MicrophoneMetricsDebug {
+  frameCount: number
+  rms: number
+  frequency: number
+  clarity: number
+  hasPitch: boolean
+  rejectedBy: RejectedBy
+}
+
+interface MicrophoneDetectionDebug {
+  activeNote: string | null
+  candidateNote: string | null
+  lastDetectedNote: string | null
+  lastReleaseReason: string | null
+}
+
+export interface MicrophoneDebugState {
+  environment: MicrophoneEnvironmentDebug
+  audioContext: MicrophoneAudioContextDebug
+  stream: MicrophoneStreamDebug
+  metrics: MicrophoneMetricsDebug
+  detection: MicrophoneDetectionDebug
+  events: string[]
+}
 
 interface UseMicrophoneInputOptions {
   onNoteDetected?: (note: NotePitch) => void
@@ -24,6 +83,36 @@ function getRms(buffer: Float32Array): number {
     sum += sample * sample
   }
   return Math.sqrt(sum / buffer.length)
+}
+
+function getNoteLabel(note: NotePitch | null): string | null {
+  if (!note) return null
+  return `${note.letter}${note.accidental ?? ''}${note.octave}`
+}
+
+function getEnvironmentDebug(isSupported: boolean): MicrophoneEnvironmentDebug {
+  if (typeof window === 'undefined') {
+    return {
+      hasGetUserMedia: isSupported,
+      isSecureContext: false,
+      origin: 'unknown',
+      protocol: 'unknown',
+    }
+  }
+
+  return {
+    hasGetUserMedia: isSupported,
+    isSecureContext: window.isSecureContext,
+    origin: window.location.origin,
+    protocol: window.location.protocol,
+  }
+}
+
+function getRejectedBy(rms: number, frequency: number, clarity: number): RejectedBy {
+  if (rms < VOLUME_THRESHOLD) return 'volume'
+  if (frequency <= 0) return 'frequency'
+  if (clarity < CLARITY_THRESHOLD) return 'clarity'
+  return null
 }
 
 export function useMicrophoneInput({
@@ -44,10 +133,58 @@ export function useMicrophoneInput({
   const candidateNoteRef = useRef<NotePitch | null>(null)
   const candidateStartedAtRef = useRef<number | null>(null)
   const releaseStartedAtRef = useRef<number | null>(null)
+  const lastDebugSampleAtRef = useRef<number>(0)
 
   const isSupported = useMemo(
     () => typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia,
     [],
+  )
+
+  const [debug, setDebug] = useState<MicrophoneDebugState>(() => ({
+    environment: getEnvironmentDebug(isSupported),
+    audioContext: {
+      state: 'unknown',
+      sampleRate: null,
+      resumeAttempted: false,
+      resumeResult: null,
+    },
+    stream: {
+      stage: 'idle',
+      errorName: null,
+      errorMessage: null,
+      trackEnabled: null,
+      trackMuted: null,
+      trackReadyState: null,
+    },
+    metrics: {
+      frameCount: 0,
+      rms: 0,
+      frequency: 0,
+      clarity: 0,
+      hasPitch: false,
+      rejectedBy: null,
+    },
+    detection: {
+      activeNote: null,
+      candidateNote: null,
+      lastDetectedNote: null,
+      lastReleaseReason: null,
+    },
+    events: [],
+  }))
+
+  const mergeDebug = useCallback((updater: (current: MicrophoneDebugState) => MicrophoneDebugState) => {
+    setDebug((current) => updater(current))
+  }, [])
+
+  const pushEvent = useCallback(
+    (message: string) => {
+      mergeDebug((current) => ({
+        ...current,
+        events: [...current.events, message].slice(-MAX_DEBUG_EVENTS),
+      }))
+    },
+    [mergeDebug],
   )
 
   const clearDetectionState = useCallback(() => {
@@ -56,15 +193,33 @@ export function useMicrophoneInput({
     candidateStartedAtRef.current = null
     releaseStartedAtRef.current = null
     setCurrentNote(null)
-  }, [])
+    mergeDebug((current) => ({
+      ...current,
+      detection: {
+        ...current.detection,
+        activeNote: null,
+        candidateNote: null,
+      },
+    }))
+  }, [mergeDebug])
 
-  const emitRelease = useCallback(() => {
+  const emitRelease = useCallback((reason: string) => {
     if (!activeNoteRef.current) return
     onNoteReleased?.()
+    mergeDebug((current) => ({
+      ...current,
+      detection: {
+        ...current.detection,
+        activeNote: null,
+        candidateNote: null,
+        lastReleaseReason: reason,
+      },
+    }))
+    pushEvent(`release: ${reason}`)
     clearDetectionState()
-  }, [clearDetectionState, onNoteReleased])
+  }, [clearDetectionState, mergeDebug, onNoteReleased, pushEvent])
 
-  const stopListening = useCallback(() => {
+  const cleanupStream = useCallback(() => {
     if (frameRef.current !== null) {
       cancelAnimationFrame(frameRef.current)
       frameRef.current = null
@@ -78,11 +233,22 @@ export function useMicrophoneInput({
 
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
+  }, [])
 
-    emitRelease()
+  const stopListening = useCallback(() => {
+    cleanupStream()
+    emitRelease('manual stop')
     clearDetectionState()
     setIsListening(false)
-  }, [clearDetectionState, emitRelease])
+    mergeDebug((current) => ({
+      ...current,
+      stream: {
+        ...current.stream,
+        stage: 'stopped',
+      },
+    }))
+    pushEvent('listening stopped')
+  }, [cleanupStream, clearDetectionState, emitRelease, mergeDebug, pushEvent])
 
   const processFrame = useCallback(
     function processFrame(timestamp: number) {
@@ -102,6 +268,31 @@ export function useMicrophoneInput({
         getAudioContext().sampleRate,
       )
       const hasPitch = rms >= VOLUME_THRESHOLD && frequency > 0 && clarity >= CLARITY_THRESHOLD
+      const rejectedBy = hasPitch ? null : getRejectedBy(rms, frequency, clarity)
+      const nextFrameCount = debug.metrics.frameCount + 1
+
+      if (
+        timestamp - lastDebugSampleAtRef.current >= DEBUG_SAMPLE_INTERVAL_MS ||
+        nextFrameCount <= 2
+      ) {
+        lastDebugSampleAtRef.current = timestamp
+        mergeDebug((current) => ({
+          ...current,
+          metrics: {
+            frameCount: current.metrics.frameCount + 1,
+            rms,
+            frequency,
+            clarity,
+            hasPitch,
+            rejectedBy,
+          },
+          detection: {
+            ...current.detection,
+            activeNote: getNoteLabel(activeNoteRef.current),
+            candidateNote: getNoteLabel(candidateNoteRef.current),
+          },
+        }))
+      }
 
       if (hasPitch) {
         const detectedNote = frequencyToNotePitch(frequency)
@@ -118,11 +309,28 @@ export function useMicrophoneInput({
           ) {
             activeNoteRef.current = detectedNote
             setCurrentNote(detectedNote)
+            mergeDebug((current) => ({
+              ...current,
+              detection: {
+                ...current.detection,
+                activeNote: getNoteLabel(detectedNote),
+                candidateNote: getNoteLabel(detectedNote),
+                lastDetectedNote: getNoteLabel(detectedNote),
+              },
+            }))
+            pushEvent(`note emitted: ${getNoteLabel(detectedNote)}`)
             onNoteDetected?.(detectedNote)
           }
         } else {
           candidateNoteRef.current = detectedNote
           candidateStartedAtRef.current = timestamp
+          mergeDebug((current) => ({
+            ...current,
+            detection: {
+              ...current.detection,
+              candidateNote: getNoteLabel(detectedNote),
+            },
+          }))
         }
       } else if (activeNoteRef.current) {
         candidateNoteRef.current = null
@@ -131,7 +339,7 @@ export function useMicrophoneInput({
         if (releaseStartedAtRef.current === null) {
           releaseStartedAtRef.current = timestamp
         } else if (timestamp - releaseStartedAtRef.current >= RELEASE_DEBOUNCE_MS) {
-          emitRelease()
+          emitRelease('silence')
         }
       } else {
         candidateNoteRef.current = null
@@ -140,12 +348,13 @@ export function useMicrophoneInput({
 
       frameRef.current = requestAnimationFrame(processFrame)
     },
-    [emitRelease, onNoteDetected],
+    [debug.metrics.frameCount, emitRelease, mergeDebug, onNoteDetected, pushEvent],
   )
 
   const startListening = useCallback(async () => {
     if (!isSupported) {
       setError('Microphone input is not supported on this device.')
+      pushEvent('microphone unsupported')
       return
     }
 
@@ -154,7 +363,90 @@ export function useMicrophoneInput({
     }
 
     setError(null)
-    ensureAudioResumed()
+    pushEvent('start tapped')
+    mergeDebug((current) => ({
+      ...current,
+      environment: getEnvironmentDebug(isSupported),
+      audioContext: {
+        ...current.audioContext,
+        state: getAudioContext().state,
+        sampleRate: getAudioContext().sampleRate,
+        resumeAttempted: true,
+      },
+      stream: {
+        ...current.stream,
+        stage: 'resuming',
+        errorName: null,
+        errorMessage: null,
+      },
+      metrics: {
+        frameCount: 0,
+        rms: 0,
+        frequency: 0,
+        clarity: 0,
+        hasPitch: false,
+        rejectedBy: null,
+      },
+      detection: {
+        activeNote: null,
+        candidateNote: null,
+        lastDetectedNote: current.detection.lastDetectedNote,
+        lastReleaseReason: current.detection.lastReleaseReason,
+      },
+    }))
+
+    const audioContext = getAudioContext()
+    const handleStateChange = () => {
+      mergeDebug((current) => ({
+        ...current,
+        audioContext: {
+          ...current.audioContext,
+          state: audioContext.state,
+          sampleRate: audioContext.sampleRate,
+        },
+      }))
+      pushEvent(`audio context: ${audioContext.state}`)
+    }
+    audioContext.addEventListener?.('statechange', handleStateChange)
+
+    try {
+      const resumeResult = await ensureAudioResumed()
+      mergeDebug((current) => ({
+        ...current,
+        audioContext: {
+          ...current.audioContext,
+          state: audioContext.state,
+          sampleRate: audioContext.sampleRate,
+          resumeResult,
+        },
+        stream: {
+          ...current.stream,
+          stage: 'requesting-stream',
+        },
+      }))
+      pushEvent(`resume resolved: ${resumeResult}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      mergeDebug((current) => ({
+        ...current,
+        audioContext: {
+          ...current.audioContext,
+          state: audioContext.state,
+          sampleRate: audioContext.sampleRate,
+          resumeResult: 'rejected',
+        },
+        stream: {
+          ...current.stream,
+          stage: 'error',
+          errorName: 'AudioContextResumeError',
+          errorMessage: message,
+        },
+      }))
+      setError(`AudioContextResumeError: ${message}`)
+      pushEvent(`resume failed: ${message}`)
+      audioContext.removeEventListener?.('statechange', handleStateChange)
+      return
+    }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -165,7 +457,6 @@ export function useMicrophoneInput({
         },
       })
 
-      const audioContext = getAudioContext()
       const analyser = audioContext.createAnalyser()
       analyser.fftSize = FFT_SIZE
 
@@ -182,17 +473,56 @@ export function useMicrophoneInput({
       detectorRef.current = detector
       clearDetectionState()
       setIsListening(true)
+      const [track] = stream.getTracks()
+      mergeDebug((current) => ({
+        ...current,
+        audioContext: {
+          ...current.audioContext,
+          state: audioContext.state,
+          sampleRate: audioContext.sampleRate,
+        },
+        stream: {
+          stage: 'listening',
+          errorName: null,
+          errorMessage: null,
+          trackEnabled: track?.enabled ?? null,
+          trackMuted: track?.muted ?? null,
+          trackReadyState: track?.readyState ?? null,
+        },
+      }))
+      pushEvent('stream acquired')
       frameRef.current = requestAnimationFrame(processFrame)
-    } catch {
-      setError('Microphone access needed')
-      stopListening()
+    } catch (error) {
+      cleanupStream()
+      const errorName =
+        error instanceof DOMException ? error.name : error instanceof Error ? error.name : 'MicrophoneError'
+      const errorMessage =
+        error instanceof DOMException ? error.message : error instanceof Error ? error.message : String(error)
+      const formattedError = `${errorName}: ${errorMessage}`
+      setError(formattedError)
+      setIsListening(false)
+      mergeDebug((current) => ({
+        ...current,
+        stream: {
+          ...current.stream,
+          stage: 'error',
+          errorName,
+          errorMessage,
+          trackEnabled: null,
+          trackMuted: null,
+          trackReadyState: null,
+        },
+      }))
+      pushEvent(`getUserMedia failed: ${formattedError}`)
+      audioContext.removeEventListener?.('statechange', handleStateChange)
     }
-  }, [clearDetectionState, isSupported, processFrame, stopListening])
+  }, [cleanupStream, clearDetectionState, isSupported, mergeDebug, processFrame, pushEvent])
 
   useEffect(() => stopListening, [stopListening])
 
   return {
     currentNote,
+    debug,
     error,
     isListening,
     isSupported,

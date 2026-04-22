@@ -8,10 +8,47 @@ vi.mock('../hooks/useVexFlow', () => ({
 
 const { micHookState } = vi.hoisted(() => ({
   micHookState: {
-    currentNote: null,
-    error: null,
+    currentNote: null as { letter: string; octave: number; accidental: null } | null,
+    error: null as string | null,
     isListening: false,
     isSupported: true,
+    debug: {
+      environment: {
+        hasGetUserMedia: true,
+        isSecureContext: true,
+        origin: 'https://example.com',
+        protocol: 'https:',
+      },
+      audioContext: {
+        state: 'running',
+        sampleRate: 48000,
+        resumeAttempted: true,
+        resumeResult: 'running',
+      },
+      stream: {
+        stage: 'idle' as string,
+        errorName: null as string | null,
+        errorMessage: null as string | null,
+        trackEnabled: null as boolean | null,
+        trackMuted: null as boolean | null,
+        trackReadyState: null as string | null,
+      },
+      metrics: {
+        frameCount: 0,
+        rms: 0,
+        frequency: 0,
+        clarity: 0,
+        hasPitch: false,
+        rejectedBy: null as string | null,
+      },
+      detection: {
+        activeNote: null as string | null,
+        candidateNote: null as string | null,
+        lastDetectedNote: null as string | null,
+        lastReleaseReason: null as string | null,
+      },
+      events: [] as string[],
+    },
     onNoteDetected: undefined as ((note: { letter: string; octave: number; accidental: null }) => void) | undefined,
     onNoteReleased: undefined as (() => void) | undefined,
     startListening: vi.fn(),
@@ -35,6 +72,7 @@ vi.mock('../hooks/useMicrophoneInput', () => ({
       error: micHookState.error,
       isListening: micHookState.isListening,
       isSupported: micHookState.isSupported,
+      debug: micHookState.debug,
       startListening: micHookState.startListening,
       stopListening: micHookState.stopListening,
     }
@@ -101,6 +139,18 @@ describe('NoteDisplay', () => {
     micHookState.error = null
     micHookState.isListening = false
     micHookState.isSupported = true
+    micHookState.debug.stream.stage = 'idle'
+    micHookState.debug.metrics.frameCount = 0
+    micHookState.debug.metrics.rms = 0
+    micHookState.debug.metrics.frequency = 0
+    micHookState.debug.metrics.clarity = 0
+    micHookState.debug.metrics.hasPitch = false
+    micHookState.debug.metrics.rejectedBy = null
+    micHookState.debug.detection.activeNote = null
+    micHookState.debug.detection.candidateNote = null
+    micHookState.debug.detection.lastDetectedNote = null
+    micHookState.debug.detection.lastReleaseReason = null
+    micHookState.debug.events = []
     micHookState.onNoteDetected = undefined
     micHookState.onNoteReleased = undefined
     micHookState.startListening.mockReset()
@@ -160,5 +210,37 @@ describe('NoteDisplay', () => {
     })
 
     expect(screen.getByLabelText('Music notation')).toHaveAttribute('data-note-color', '#22c55e')
+  })
+
+  it('renders microphone diagnostics on screen', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    micHookState.isListening = true
+    micHookState.currentNote = { letter: 'F', octave: 4, accidental: null }
+    micHookState.debug.stream.stage = 'listening'
+    micHookState.debug.stream.trackReadyState = 'live'
+    micHookState.debug.stream.trackMuted = false
+    micHookState.debug.metrics.frameCount = 42
+    micHookState.debug.metrics.rms = 0.031
+    micHookState.debug.metrics.frequency = 349.23
+    micHookState.debug.metrics.clarity = 0.88
+    micHookState.debug.metrics.hasPitch = false
+    micHookState.debug.metrics.rejectedBy = 'clarity'
+    micHookState.debug.detection.lastDetectedNote = 'F4'
+    micHookState.debug.events = ['stream acquired', 'pitch rejected (clarity)']
+
+    render(<NoteDisplay />)
+
+    expect(screen.getByText('Microphone diagnostics')).toBeInTheDocument()
+    expect(screen.getByText(/Secure: yes/i)).toBeInTheDocument()
+    expect(screen.getByText(/AudioContext: running/i)).toBeInTheDocument()
+    expect(screen.getByText(/Stream: listening/i)).toBeInTheDocument()
+    expect(screen.getByText(/Track: live/i)).toBeInTheDocument()
+    expect(screen.getByText(/RMS: 0.031/i)).toBeInTheDocument()
+    expect(screen.getByText(/Frequency: 349.23 Hz/i)).toBeInTheDocument()
+    expect(screen.getByText(/Rejected by: clarity/i)).toBeInTheDocument()
+    expect(screen.getByText(/Target note: E4/i)).toBeInTheDocument()
+    expect(screen.getByText(/Detected note: F4/i)).toBeInTheDocument()
+    expect(screen.getByText(/Match result: wrong note/i)).toBeInTheDocument()
+    expect(screen.getByText('pitch rejected (clarity)')).toBeInTheDocument()
   })
 })

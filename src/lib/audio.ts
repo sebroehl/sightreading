@@ -32,11 +32,12 @@ export function getAudioContext(): AudioContext {
   return ctx
 }
 
-export function ensureAudioResumed(): void {
+export async function ensureAudioResumed(): Promise<AudioContextState> {
   const ac = getAudioContext()
   if (ac.state === 'suspended') {
-    ac.resume()
+    await ac.resume()
   }
+  return ac.state
 }
 
 const HARMONICS = [
