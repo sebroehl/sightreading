@@ -21,7 +21,7 @@ function buildRange(start: NotePitch, length: number): Note[] {
 
 export const NOTE_RANGES: Record<Clef, Note[]> = {
   treble: buildRange({ letter: 'E', octave: 4 }, 10),
-  bass: buildRange({ letter: 'G', octave: 2 }, 10),
+  bass: buildRange({ letter: 'C', octave: 2 }, 14),
 }
 
 function accidentalToText(accidental: NoteAccidental | undefined): string {

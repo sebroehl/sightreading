@@ -37,4 +37,13 @@ describe('notation helpers', () => {
       NOTE_RANGES.bass[NOTE_RANGES.bass.length - 1],
     )
   })
+
+  it('covers two bass octaves from C2 to B3', () => {
+    expect(NOTE_RANGES.bass[0]).toMatchObject({ letter: 'C', octave: 2 })
+    expect(NOTE_RANGES.bass[NOTE_RANGES.bass.length - 1]).toMatchObject({
+      letter: 'B',
+      octave: 3,
+    })
+    expect(NOTE_RANGES.bass).toHaveLength(14)
+  })
 })

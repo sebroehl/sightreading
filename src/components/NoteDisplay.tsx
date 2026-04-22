@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { useMicrophoneInput } from '../hooks/useMicrophoneInput'
 import { CORRECT_COLOR, type Theme } from '../hooks/useVexFlow'
 import { generateNoteQueue, notePitchEquals, randomNote } from '../lib/notation'
 import type { Clef, NotePitch } from '../lib/types'
@@ -9,8 +10,73 @@ import { ThemeToggle } from './ThemeToggle'
 
 const NOTE_COUNT = 8
 
+const ICON_SIZE = 20
+const PAD = 0.3
+
+interface GlyphDef {
+  char: string
+  sw: [number, number]
+  ne: [number, number]
+}
+
+const GLYPHS = {
+  treble: { char: '\uE050', sw: [0, -2.632], ne: [2.684, 4.392] },
+  bass: { char: '\uE062', sw: [-0.02, -2.54], ne: [2.736, 1.048] },
+  quarter: { char: '\uE1D5', sw: [0, -0.564], ne: [1.328, 3.5] },
+} satisfies Record<string, GlyphDef>
+
+function BravuraIcon({ glyph, opacity = 1 }: { glyph: GlyphDef; opacity?: number }) {
+  const x0 = glyph.sw[0] - PAD
+  const y0 = -glyph.ne[1] - PAD
+  const w = glyph.ne[0] - glyph.sw[0] + PAD * 2
+  const h = glyph.ne[1] - glyph.sw[1] + PAD * 2
+
+  return (
+    <svg
+      width={ICON_SIZE}
+      height={ICON_SIZE}
+      viewBox={`${x0} ${y0} ${w} ${h}`}
+      fill="currentColor"
+      style={{ opacity }}
+    >
+      <text
+        x="0"
+        y="0"
+        fontFamily="Bravura, Academico, serif"
+        fontSize="4"
+      >
+        {glyph.char}
+      </text>
+    </svg>
+  )
+}
+
+function MicrophoneIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      width={ICON_SIZE}
+      height={ICON_SIZE}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z"
+        fill={active ? 'currentColor' : 'none'}
+      />
+      <path d="M19 11a7 7 0 0 1-14 0" />
+      <path d="M12 18v3" />
+      <path d="M8 21h8" />
+    </svg>
+  )
+}
+
 export function NoteDisplay() {
-  const [clef] = useState<Clef>('treble')
+  const [clef, setClef] = useState<Clef>('treble')
   const [notes, setNotes] = useState(() => generateNoteQueue('treble', NOTE_COUNT))
   const [theme, setTheme] = useState<Theme>('dark')
   const [showLabels, setShowLabels] = useState(false)
@@ -48,6 +114,18 @@ export function NoteDisplay() {
     }
   }, [sliding])
 
+  const {
+    currentNote: detectedNote,
+    error: microphoneError,
+    isListening,
+    isSupported: isMicrophoneSupported,
+    startListening,
+    stopListening,
+  } = useMicrophoneInput({
+    onNoteDetected: handleNoteClick,
+    onNoteReleased: handleNoteRelease,
+  })
+
   const handleSlideComplete = useCallback(() => {
     setSliding(false)
     setNoteColor(undefined)
@@ -63,6 +141,26 @@ export function NoteDisplay() {
     setShowLabels((s) => !s)
   }, [])
 
+  const toggleMicrophone = useCallback(() => {
+    if (isListening) {
+      stopListening()
+      return
+    }
+
+    void startListening()
+  }, [isListening, startListening, stopListening])
+
+  const toggleClef = useCallback(() => {
+    setClef((currentClef) => {
+      const nextClef = currentClef === 'treble' ? 'bass' : 'treble'
+      setNotes(generateNoteQueue(nextClef, NOTE_COUNT))
+      setNoteColor(undefined)
+      setGhostNote(null)
+      setSliding(false)
+      return nextClef
+    })
+  }, [])
+
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-[var(--color-bg)] transition-colors duration-500">
       <div className="flex w-full max-w-[560px] flex-col items-center gap-6 px-8">
@@ -70,27 +168,47 @@ export function NoteDisplay() {
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
           <button
             type="button"
+            onClick={toggleClef}
+            aria-label={`Switch to ${clef === 'treble' ? 'bass' : 'treble'} clef`}
+            className="flex h-10 w-10 items-center justify-center rounded-full transition-colors duration-300 text-[var(--color-icon)] hover:text-[var(--color-icon-hover)] cursor-pointer overflow-hidden"
+          >
+            <BravuraIcon glyph={clef === 'treble' ? GLYPHS.treble : GLYPHS.bass} />
+          </button>
+          <button
+            type="button"
             onClick={toggleLabels}
             aria-label={showLabels ? 'Hide note names' : 'Show note names'}
-            className="flex h-10 w-10 items-center justify-center rounded-full transition-colors duration-300 text-[var(--color-icon)] hover:text-[var(--color-icon-hover)] cursor-pointer"
+            className="flex h-10 w-10 items-center justify-center rounded-full transition-colors duration-300 text-[var(--color-icon)] hover:text-[var(--color-icon-hover)] cursor-pointer overflow-hidden"
           >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ opacity: showLabels ? 1 : 0.5 }}
-            >
-              <path d="M9 18V5l12-2v13" />
-              <circle cx="6" cy="18" r="3" />
-              <circle cx="18" cy="16" r="3" />
-            </svg>
+            <BravuraIcon glyph={GLYPHS.quarter} opacity={showLabels ? 1 : 0.5} />
           </button>
+          {isMicrophoneSupported && (
+            <button
+              type="button"
+              onClick={toggleMicrophone}
+              aria-label={isListening ? 'Stop microphone input' : 'Start microphone input'}
+              aria-pressed={isListening}
+              className="relative flex h-10 w-10 items-center justify-center rounded-full transition-colors duration-300 text-[var(--color-icon)] hover:text-[var(--color-icon-hover)] cursor-pointer overflow-hidden"
+            >
+              <MicrophoneIcon active={isListening} />
+              {isListening && (
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[var(--color-icon-hover)]" />
+              )}
+            </button>
+          )}
         </div>
+        {(microphoneError || isListening) && (
+          <div
+            className="min-h-5 text-sm text-[var(--color-text-muted)]"
+            aria-live="polite"
+          >
+            {microphoneError
+              ? microphoneError
+              : detectedNote
+                ? `Listening: ${detectedNote.letter}${detectedNote.accidental ?? ''}${detectedNote.octave}`
+                : 'Listening...'}
+          </div>
+        )}
         <div className="w-full">
           <Staff
             notation={notation}
@@ -101,8 +219,14 @@ export function NoteDisplay() {
             onSlideComplete={handleSlideComplete}
           />
         </div>
-        <div className="w-full">
-          <PianoKeyboard showLabels={showLabels} onNoteClick={handleNoteClick} onNoteRelease={handleNoteRelease} />
+        <div className={`w-full transition-opacity duration-300 ${isListening ? 'opacity-60' : ''}`}>
+          <PianoKeyboard
+            startOctave={clef === 'treble' ? 4 : 2}
+            octaveCount={2}
+            showLabels={showLabels}
+            onNoteClick={handleNoteClick}
+            onNoteRelease={handleNoteRelease}
+          />
         </div>
       </div>
     </div>

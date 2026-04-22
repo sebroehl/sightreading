@@ -25,7 +25,7 @@ function midiToFrequency(midi: number): number {
 
 let ctx: AudioContext | null = null
 
-function getAudioContext(): AudioContext {
+export function getAudioContext(): AudioContext {
   if (!ctx) {
     ctx = new AudioContext()
   }
@@ -48,15 +48,31 @@ const HARMONICS = [
   { ratio: 6, gain: 0.015 },
 ]
 
-// Simulate two slightly detuned strings per note (real pianos have 2-3)
+const BASS_HARMONICS = [
+  { ratio: 1, gain: 0.8 },
+  { ratio: 2, gain: 1.0 },
+  { ratio: 3, gain: 0.7 },
+  { ratio: 4, gain: 0.4 },
+  { ratio: 5, gain: 0.25 },
+  { ratio: 6, gain: 0.15 },
+  { ratio: 7, gain: 0.1 },
+  { ratio: 8, gain: 0.06 },
+  { ratio: 9, gain: 0.04 },
+  { ratio: 10, gain: 0.025 },
+]
+
 const DETUNE_CENTS = [-3, 3]
+const BASS_DETUNE_CENTS = [-5, 5]
 
 function createHammerNoise(
   ac: AudioContext,
   dest: AudioNode,
   now: number,
+  midi: number,
 ): void {
-  const bufferLen = Math.floor(ac.sampleRate * 0.04)
+  const isBass = midi < 48
+  const noiseDuration = isBass ? 0.06 : 0.04
+  const bufferLen = Math.floor(ac.sampleRate * noiseDuration)
   const buffer = ac.createBuffer(1, bufferLen, ac.sampleRate)
   const data = buffer.getChannelData(0)
   for (let i = 0; i < bufferLen; i++) {
@@ -68,19 +84,19 @@ function createHammerNoise(
 
   const bandpass = ac.createBiquadFilter()
   bandpass.type = 'bandpass'
-  bandpass.frequency.value = 3000
-  bandpass.Q.value = 0.5
+  bandpass.frequency.value = isBass ? 1200 : 3000
+  bandpass.Q.value = isBass ? 0.3 : 0.5
 
   const noiseGain = ac.createGain()
-  noiseGain.gain.setValueAtTime(0.25, now)
-  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.04)
+  noiseGain.gain.setValueAtTime(isBass ? 0.18 : 0.25, now)
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + noiseDuration)
 
   noise.connect(bandpass)
   bandpass.connect(noiseGain)
   noiseGain.connect(dest)
 
   noise.start(now)
-  noise.stop(now + 0.04)
+  noise.stop(now + noiseDuration)
 }
 
 export function playNote(note: NotePitch, duration = 2.5): void {
@@ -90,31 +106,46 @@ export function playNote(note: NotePitch, duration = 2.5): void {
   const midi = notePitchToMidi(note)
   const freq = midiToFrequency(midi)
   const now = ac.currentTime
+  const isBass = midi < 48
 
-  // Higher notes decay faster, just like a real piano
   const decayScale = Math.max(0.4, 1 - (midi - 48) * 0.008)
   const totalDuration = duration * decayScale
 
+  const bassBoost = isBass ? Math.min(1 + (48 - midi) * 0.015, 1.4) : 1
   const masterGain = ac.createGain()
-  masterGain.gain.setValueAtTime(0.3, now)
+  masterGain.gain.setValueAtTime(0.3 * bassBoost, now)
 
-  // Gentle low-pass to tame upper harmonics like felt damping
+  const lpfStart = isBass
+    ? Math.min(freq * 18, 14000)
+    : Math.min(freq * 8, 12000)
+  const lpfEnd = isBass
+    ? Math.max(freq * 6, 800)
+    : Math.max(freq * 2, 400)
+
   const lpf = ac.createBiquadFilter()
   lpf.type = 'lowpass'
-  lpf.frequency.setValueAtTime(Math.min(freq * 8, 12000), now)
-  lpf.frequency.exponentialRampToValueAtTime(
-    Math.max(freq * 2, 400),
-    now + totalDuration * 0.7,
-  )
+  lpf.frequency.setValueAtTime(lpfStart, now)
+  lpf.frequency.exponentialRampToValueAtTime(lpfEnd, now + totalDuration * 0.7)
 
   masterGain.connect(lpf)
   lpf.connect(ac.destination)
 
-  createHammerNoise(ac, masterGain, now)
+  createHammerNoise(ac, masterGain, now, midi)
 
-  for (const detune of DETUNE_CENTS) {
-    for (const h of HARMONICS) {
-      const hFreq = freq * h.ratio
+  const harmonics = isBass ? BASS_HARMONICS : HARMONICS
+  const detuneCents = isBass ? BASS_DETUNE_CENTS : DETUNE_CENTS
+  const attackTime = isBass ? 0.008 : 0.005
+
+  // Bass strings have inharmonicity: partials are progressively sharper
+  const inharmonicity = isBass
+    ? 0.0004 * Math.pow(2, (48 - midi) / 12)
+    : 0
+
+  for (const detune of detuneCents) {
+    for (let hi = 0; hi < harmonics.length; hi++) {
+      const h = harmonics[hi]
+      const n = h.ratio
+      const hFreq = freq * n * Math.sqrt(1 + inharmonicity * n * n)
       if (hFreq > ac.sampleRate / 2) continue
 
       const osc = ac.createOscillator()
@@ -124,20 +155,24 @@ export function playNote(note: NotePitch, duration = 2.5): void {
 
       const gain = ac.createGain()
       const peak = h.gain * 0.5
+
+      // Upper partials die off faster in bass strings
+      const partialDecay = isBass ? Math.pow(0.88, hi) : 1
+      const partialDuration = totalDuration * partialDecay
+
       gain.gain.setValueAtTime(0, now)
-      gain.gain.linearRampToValueAtTime(peak, now + 0.005)
-      // Two-stage decay: fast initial drop, then slow release
+      gain.gain.linearRampToValueAtTime(peak, now + attackTime)
       gain.gain.exponentialRampToValueAtTime(
         peak * 0.3,
-        now + totalDuration * 0.15,
+        now + partialDuration * 0.15,
       )
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + totalDuration)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + partialDuration)
 
       osc.connect(gain)
       gain.connect(masterGain)
 
       osc.start(now)
-      osc.stop(now + totalDuration + 0.05)
+      osc.stop(now + partialDuration + 0.05)
     }
   }
 }
