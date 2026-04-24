@@ -101,6 +101,25 @@ function DiagnosticsIcon({ active }: { active: boolean }) {
   )
 }
 
+function CloseIcon() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  )
+}
+
 export function NoteDisplay() {
   const [clef, setClef] = useState<Clef>('treble')
   const [notes, setNotes] = useState(() => generateNoteQueue('treble', NOTE_COUNT))
@@ -269,7 +288,15 @@ export function NoteDisplay() {
               padding: '28px',
             }}
           >
-            <div style={{ paddingBottom: '8px' }}>
+            <button
+              type="button"
+              onClick={toggleDiagnostics}
+              aria-label="Close diagnostics"
+              className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-icon)] transition-all duration-200 hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-icon-hover)]"
+            >
+              <CloseIcon />
+            </button>
+            <div style={{ paddingBottom: '8px', paddingRight: '28px' }}>
               <h2 className="text-xs font-semibold text-[var(--color-text)]">
                 Microphone diagnostics
               </h2>
